@@ -1,0 +1,114 @@
+# Copyright (c) 2017 Intel Corporation.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+---
+#- patch: src="{{ item }}" basedir="{{ dpdk_path }}" strip=0
+#  with_fileglob:
+#    - "{{ local_nsb_path }}/patches/dpdk_custom_patch/rte_pipeline.patch"
+#
+#- patch: src="{{ item }}" basedir="{{ dpdk_path }}" strip=1
+#  with_fileglob:
+#    - "{{ local_nsb_path }}/patches/dpdk_custom_patch/0*.patch"
+
+- name: set DPDK shared dir
+  set_fact:
+    dpdk_shared_path: "{{ dpdk_path }}-shared"
+
+- command: "cp -a {{ dpdk_path }} {{ dpdk_shared_path }}"
+
+- name: find kernel for image, (including chroot)
+  find_kernel:
+    kernel: "{{ ansible_kernel }}"
+  register: found_kernel
+
+# Do this before installing kernel headers
+- name: Set dpdk_kernel to be the kernel we found
+  set_fact:
+    dpdk_kernel: "{{ found_kernel.kernel }}"
+
+- include: "{{ ansible_os_family }}.yml"
+
+- name: set RTE_KERNELDIR to point to found kernel
+  set_fact:
+    RTE_KERNELDIR: "/lib/modules/{{ dpdk_kernel }}/build"
+
+- command: make -j {{ ansible_processor_vcpus }} config  T={{ dpdk_make_arch }} O={{ dpdk_make_arch }}
+  args:
+    chdir: "{{ dpdk_shared_path }}"
+  environment:
+    RTE_KERNELDIR: "{{ RTE_KERNELDIR }}"
+
+- name: enable RTE_PORT_STATS_COLLECT
+  lineinfile:
+    dest: "{{ dpdk_shared_path }}/{{ dpdk_make_arch }}/.config"
+    regexp: '^CONFIG_RTE_PORT_STATS_COLLECT=n'
+    line: 'CONFIG_RTE_PORT_STATS_COLLECT=y'
+
+- name: enable DPDK RTE_PORT_PCAP
+  lineinfile:
+    dest: "{{ dpdk_shared_path }}/{{ dpdk_make_arch }}/.config"
+    regexp: '^CONFIG_RTE_PORT_PCAP=n'
+    line: 'CONFIG_RTE_PORT_PCAP=y'
+
+- name: enable DPDK RTE_TABLE_STATS_COLLECT
+  lineinfile:
+    dest: "{{ dpdk_shared_path }}/{{ dpdk_make_arch }}/.config"
+    regexp: '^CONFIG_RTE_TABLE_STATS_COLLECT=n'
+    line: 'CONFIG_RTE_TABLE_STATS_COLLECT=y'
+
+- name: enable DPDK RTE_PIPELINE_STATS_COLLECT
+  lineinfile:
+    dest: "{{ dpdk_shared_path }}/{{ dpdk_make_arch }}/.config"
+    regexp: '^CONFIG_RTE_PIPELINE_STATS_COLLECT=n'
+    line: 'CONFIG_RTE_PIPELINE_STATS_COLLECT=y'
+
+# This is requied for collectd but VNFs can't use shared DPDK
+- name: enable CONFIG_RTE_BUILD_SHARED_LIB
+  lineinfile:
+    dest: "{{ dpdk_shared_path }}/{{ dpdk_make_arch }}/.config"
+    regexp: '^CONFIG_RTE_BUILD_SHARED_LIB=n'
+    line: 'CONFIG_RTE_BUILD_SHARED_LIB=y'
+
+- name: enable DPDK CONFIG_RTE_EAL_PMD_PATH
+  lineinfile:
+    dest: "{{ dpdk_shared_path }}/{{ dpdk_make_arch }}/.config"
+    regexp: '^CONFIG_RTE_EAL_PMD_PATH=""'
+    line: 'CONFIG_RTE_EAL_PMD_PATH="{{ dpdk_pmd_path }}"'
+
+  # no T= target for clean
+- command: make -j {{ ansible_processor_vcpus }} clean O={{ dpdk_make_arch }}
+  args:
+    chdir: "{{ dpdk_shared_path }}"
+  environment:
+    RTE_KERNELDIR: "{{ RTE_KERNELDIR }}"
+
+# TODO: disable ASLR
+
+- command: make -j {{ ansible_processor_vcpus }}
+  args:
+    chdir: "{{ dpdk_shared_path }}/{{ dpdk_make_arch}}"
+  environment:
+    RTE_KERNELDIR: "{{ RTE_KERNELDIR }}"
+
+#- name: make install DPDK into /usr for collectd and other programs
+#  make:
+#    chdir: "{{ dpdk_shared_path }}/{{ dpdk_make_arch}}"
+#    target: install
+#    params: "T={{ RTE_TARGET }}"
+##    params: "prefix={{ usr_prefix }}"
+#  environment:
+#    RTE_KERNELDIR: "{{ RTE_KERNELDIR }}"
+#  become: yes
+
+# don't install module or copy dpdk-devbind
+

@@ -1,0 +1,47 @@
+##############################################################################
+# Copyright (c) 2017 Huawei AB and others.
+#
+# All rights reserved. This program and the accompanying materials
+# are made available under the terms of the Apache License, Version 2.0
+# which accompanies this distribution, and is available at
+# http://www.apache.org/licenses/LICENSE-2.0
+##############################################################################
+
+---
+
+schema: "yardstick:task:0.1"
+description: >
+    Yardstick TC080 config file;
+    measure network latency between containers in k8s using ping;
+
+scenarios:
+-
+  type: Ping
+  options:
+    packetsize: 200
+
+  host: host-k8s
+  target: target-k8s
+
+  runner:
+    type: Duration
+    duration: 60
+    interval: 1
+
+  sla:
+    max_rtt: 10
+    action: monitor
+
+context:
+  type: Kubernetes
+  name: k8s
+
+  servers:
+    host:
+      image: openretriever/yardstick
+      command: /bin/bash
+      args: ['-c', 'chmod 700 ~/.ssh; chmod 600 ~/.ssh/*; service ssh restart;while true ; do sleep 10000; done']
+    target:
+      image: openretriever/yardstick
+      command: /bin/bash
+      args: ['-c', 'chmod 700 ~/.ssh; chmod 600 ~/.ssh/*; service ssh restart;while true ; do sleep 10000; done']
